@@ -1,0 +1,79 @@
+#ifndef FIXED_MEMORY_RESOURCE_H
+#define FIXED_MEMORY_RESOURCE_H
+
+#include <memory_resource>
+#include <map>
+#include <cstddef>
+#include <list>
+
+// Аллокатор с фиксированным блоком памяти
+// Выделяет память один раз при создании, затем управляет этим блоком
+class FixedMemoryResource : public std::pmr::memory_resource {
+private:
+    // Структура для хранения информации о блоке
+    struct BlockInfo {
+        size_t size;        // Размер блока в байтах
+        bool is_free;       // Свободен ли блок
+        size_t alignment;   // Выравнивание блока
+        
+        BlockInfo() : size(0), is_free(true), alignment(0) {}
+        
+        BlockInfo(size_t s, bool free, size_t align = 0) 
+            : size(s), is_free(free), alignment(align) {}
+    };
+    
+    // Указатель на начало фиксированного блока памяти
+    void* memory_pool_;
+    
+    // Общий размер блока памяти в байтах
+    size_t pool_size_;
+    
+    // Текущее смещение в блоке (до какого места выделена память)
+    size_t current_offset_;
+    
+    // Вся информация о блоках хранится в одной std::map
+    // Ключ - адрес блока, значение - информация о блоке
+    std::map<void*, BlockInfo> blocks_info_;
+
+public:
+    // Конструктор: выделяет фиксированный блок памяти заданного размера
+    explicit FixedMemoryResource(size_t size = 1024 * 1024);
+    
+    // Деструктор: освобождает весь блок памяти
+    ~FixedMemoryResource() override;
+    
+    // Запрещаем копирование
+    FixedMemoryResource(const FixedMemoryResource&) = delete;
+    FixedMemoryResource& operator=(const FixedMemoryResource&) = delete;
+    
+    // Разрешаем перемещение
+    FixedMemoryResource(FixedMemoryResource&& other) noexcept;
+    FixedMemoryResource& operator=(FixedMemoryResource&& other) noexcept;
+    
+    // Вывод статистики использования памяти
+    void print_stats() const;
+    
+    // Методы для тестирования
+    size_t get_allocated_count() const;
+    size_t get_free_count() const;
+    size_t get_current_offset() const { return current_offset_; }
+
+protected:
+    // Выделение памяти
+    void* do_allocate(size_t bytes, size_t alignment) override;
+    
+    // Освобождение памяти
+    void do_deallocate(void* ptr, size_t bytes, size_t alignment) override;
+    
+    // Сравнение memory_resource
+    bool do_is_equal(const std::pmr::memory_resource& other) const noexcept override;
+
+private:
+    // Поиск подходящего свободного блока для переиспользования
+    void* find_free_block(size_t bytes, size_t alignment);
+    
+    // Очистка всех ресурсов
+    void cleanup();
+};
+
+#endif
